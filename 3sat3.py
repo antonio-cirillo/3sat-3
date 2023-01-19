@@ -1,9 +1,6 @@
 from networkx.drawing.layout import bipartite_layout
 import networkx as nx
 
-from scipy.sparse.csgraph import maximum_bipartite_matching
-from scipy.sparse import csr_matrix
-
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
@@ -66,6 +63,36 @@ def generate_random_formula():
     return _phi[:-3]
 
 
+def dfs(_graph, _u, _clauses, match_clauses, seen):
+    # for each clause v
+    for _v in range(len(_clauses)):
+        # if clauses v contains variable xu
+        # and clauses v is not seen
+        if _graph[_u][_v] and not seen[_v]:
+            # mark clauses v as True
+            seen[_v] = True
+            # if clause v is not covered by a variable
+            # or the previously variable x assigned to clause v
+            # has an alternative clause to cover
+            if match_clauses[_v] == -1 or dfs(_graph, match_clauses[_v], _clauses, match_clauses, seen):
+                match_clauses[_v] = _u
+                return True
+
+    return False
+
+
+def perfect_matching(_variables, _clauses, _graph):
+    # array of matching
+    # match_clauses[i] = j if the clause ci is covered by variable xj
+    match_clauses = [-1] * len(_clauses)
+
+    for i in range(len(_variables)):
+        seen = [False] * len(_clauses)
+        dfs(_graph, i, _clauses, match_clauses, seen)
+
+    return match_clauses
+
+
 def create_graph(formula):
     _edges = pd.DataFrame(columns=['u', 'v'])
     _literals_for_each_clauses = []
@@ -105,7 +132,7 @@ def create_graph(formula):
     item = [i for i in range(1, len(_clauses))]
 
     # create and plot graph
-    _graph = nx.Graph()
+    _graph = nx.DiGraph()
     _graph.add_nodes_from(_variables, bipartite=0)
     _graph.add_nodes_from(item, bipartite=2)
     _graph.add_edges_from(tuple(x) for x in _edges.values)
@@ -113,17 +140,56 @@ def create_graph(formula):
     pos = bipartite_layout(_graph, _variables)
     plt.figure(figsize=(10, 10))
     nx.draw_networkx(_graph, pos, with_labels=True, node_size=1000, node_color='r', edge_color='g', arrowsize=10)
-    plt.savefig('./bipartite-graph.jpeg')
+    plt.savefig('./bipartite-graph.svg')
     plt.close()
 
-    # create csr_matrix
-    matrix = np.zeros((len(_variables), len(_clauses)), dtype=int)
+    _flow_net = _graph.copy()
+    _flow_net.add_nodes_from(['s', 't'])
+    _flow_net.add_edges_from(('s', f'x{_i + 1}') for _i in range(len(_variables)))
+    _flow_net.add_edges_from((_i + 1, 't') for _i in range(len(_variables)))
+    pos = bipartite_layout(_graph, _variables)
+    pos.update({'s': [-2, 0]})
+    pos.update({'t': [2, 0]})
+    edge_labels = dict([((_u, _v), f'1') for _u, _v in _flow_net.edges])
+    plt.figure(figsize=(10, 10))
+    nx.draw_networkx(_flow_net, pos, with_labels=True, node_size=1000, node_color='r', edge_color='g', arrowsize=10)
+    nx.draw_networkx_edge_labels(_flow_net, pos, edge_labels=edge_labels)
+    plt.savefig('./flow-net.svg')
+    plt.close()
+
+    # create matrix of flow net
+    matrix = np.zeros((len(_clauses), len(_variables)), dtype=int)
+    # set flow for each nodes (u, v): u = xi and xi in v = cj
     for i, _edge in _edges.iterrows():
         xi = _edge['u']
         cj = _edge['v']
-        matrix[_variables.index(xi)][cj - 1] = 1
+        j = _variables.index(xi)
+        matrix[j][cj - 1] = 1
 
-    return _variables, _clauses, _literals_for_each_clauses, csr_matrix(matrix)
+    return _variables, _clauses, _literals_for_each_clauses, matrix
+
+
+def plot_max_flow(_variables, _clauses, _edges):
+    # generate array of clauses node
+    item = [i for i in range(1, len(_clauses))]
+
+    # create and plot graph
+    _flow_net = nx.DiGraph()
+    _flow_net.add_nodes_from(_variables, bipartite=0)
+    _flow_net.add_nodes_from(item, bipartite=2)
+    _flow_net.add_edges_from(tuple(_edge) for _edge in _edges.values)
+    pos = bipartite_layout(_flow_net, _variables)
+
+    _flow_net.add_nodes_from(['s', 't'])
+    _flow_net.add_edges_from(('s', f'x{_i + 1}') for _i in range(len(_variables)))
+    _flow_net.add_edges_from((_i + 1, 't') for _i in range(len(_variables)))
+    pos.update({'s': [-2, 0]})
+    pos.update({'t': [2, 0]})
+
+    plt.figure(figsize=(10, 10))
+    nx.draw_networkx(_flow_net, pos, with_labels=True, node_size=1000, node_color='r', edge_color='g', arrowsize=10)
+    plt.savefig('./max-flow-net.svg')
+    plt.close()
 
 
 def plot_matching(_variables, _clauses, _edges):
@@ -131,7 +197,7 @@ def plot_matching(_variables, _clauses, _edges):
     item = [i for i in range(1, len(_clauses))]
 
     # create and plot graph
-    _graph = nx.Graph()
+    _graph = nx.DiGraph()
     _graph.add_nodes_from(_variables, bipartite=0)
     _graph.add_nodes_from(item, bipartite=2)
     _graph.add_edges_from(tuple(_edge) for _edge in _edges.values)
@@ -139,7 +205,7 @@ def plot_matching(_variables, _clauses, _edges):
     pos = bipartite_layout(_graph, _variables)
     plt.figure(figsize=(10, 10))
     nx.draw_networkx(_graph, pos, with_labels=True, node_size=1000, node_color='r', edge_color='g', arrowsize=10)
-    plt.savefig('./perfect-matching.jpeg')
+    plt.savefig('./perfect-matching.svg')
     plt.close()
 
 
@@ -166,8 +232,8 @@ if __name__ == '__main__':
 
     # create graph
     variables, clauses, literals_for_each_clauses, graph = create_graph(phi)
-    # get the maximum bipartite matching
-    matching = maximum_bipartite_matching(graph, perm_type='row')
+    # get perfect matching
+    matching = perfect_matching(variables, clauses, graph)
 
     # init output
     output = [0] * len(variables)
@@ -185,6 +251,8 @@ if __name__ == '__main__':
             output[variables.index(u)] = 0
         else:
             output[variables.index(u)] = 1
+    # plot max flow solution
+    plot_max_flow(variables, clauses, edges)
     # plot matching
     plot_matching(variables, clauses, edges)
 
