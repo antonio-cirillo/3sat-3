@@ -28,8 +28,8 @@ def str2bool(v):
 
 
 def generate_random_formula():
-    _variables = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J']
-    n_occurrences = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    _variables = ['x1', 'x2', 'x3', 'x4', 'x5']
+    n_occurrences = [0, 0, 0, 0, 0]
     _phi = ''
 
     while 1:
@@ -47,9 +47,9 @@ def generate_random_formula():
             x1, x2, x3 = np.random.choice(temp, 3, replace=False)
         # if there are not at least 3 literals, add 2 more literals to the formula
         except ValueError:
-            max_variables = max(_variables)
-            v1 = chr(ord(max_variables) + 1)
-            v2 = chr(ord(max_variables) + 2)
+            n_variables = len(_variables)
+            v1 = f'x{n_variables + 1}'
+            v2 = f'x{n_variables + 2}'
             _variables.extend([v1, v2])
             n_occurrences.extend([0, 0])
             continue
@@ -75,11 +75,11 @@ def create_graph(formula):
 
     for i in range(len(_clauses)):
         # get literals for each clause
-        literals = re.findall('-?\w', _clauses[i])
+        literals = re.findall('-?\w\d*', _clauses[i])
         l1, l2, l3 = literals[0], literals[2], literals[4]
 
         # get variables for each clause
-        x1, x2, x3 = re.findall('\w', f'{l1} {l2} {l3}')
+        x1, x2, x3 = re.findall('\w\d*', f'{l1} {l2} {l3}')
 
         # add variables in variables array and updated number of occurrences
         # create edge (u, v) where u = xj and v = Ci
@@ -182,9 +182,9 @@ if __name__ == '__main__':
 
         # if u appears in the v negated clause then u = 0, otherwise 1
         if f'-{u}' in literals_for_each_clauses[i]:
-            output[i] = 0
+            output[variables.index(u)] = 0
         else:
-            output[i] = 1
+            output[variables.index(u)] = 1
     # plot matching
     plot_matching(variables, clauses, edges)
 
